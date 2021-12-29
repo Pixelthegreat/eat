@@ -1,0 +1,142 @@
+#!/bin/bash
+
+# get values
+COMMAND_NAME=$1
+PACKAGE_NAME=$2
+
+# print help info
+help_dialog() {
+
+	echo usage: $0 command [package name]
+	echo
+	echo commands:
+	echo -e \\thelp\\tprint help info
+	echo -e \\tinst\\tinstall a package
+	echo -e \\tshow\\tshow a package\'s info
+	echo -e \\tlist\\tlist all packages
+	exit 0
+}
+
+# find a package in /etc/eat/pkg.list #
+find_package() {
+	
+	FOUND_PACKAGE=$(awk " \$0==\"$PACKAGE_NAME\"" $EAT_PREFIX/etc/eat/pkg.list)
+}
+
+if [ "$COMMAND_NAME" == "" ]; then
+	help_dialog
+fi
+
+if [ "$COMMAND_NAME" == "help" ]; then
+	help_dialog
+fi
+
+# show package information #
+if [ "$COMMAND_NAME" == "show" ]; then
+	stat "$EAT_PREFIX/etc/eat/pkg.list" > /dev/null
+	
+	# create package list
+	if [ $? -ne 0 ]; then
+		touch "$EAT_PREFIX/etc/eat/pkg.list"
+	fi
+	
+	# find package #
+	find_package
+	
+	# if not found #
+	if [ "$FOUND_PACKAGE" == "" ]; then
+		echo $0: cannot find package \'$PACKAGE_NAME\'.
+		exit 1
+	fi
+
+	# find package info file
+	stat "$EAT_PREFIX/etc/eat/pkgs/$PACKAGE_NAME" > /dev/null
+	
+	# not found #
+	if [ $? -ne 0 ]; then
+		echo $0: cannot find configuration file for package \'$PACKAGE_NAME\'.
+		exit 1
+	fi
+	
+	# print config file #
+	echo package \'bob\':
+	
+	source "$EAT_PREFIX/etc/eat/pkgs/$PACKAGE_NAME" > /dev/null
+	
+	# print info #
+	echo -e \\tname: $name
+	echo -e \\tdescription: $desc
+	echo -e \\tpriority: $priority
+	echo -e \\tfiles: $files
+	
+	# exit #
+	exit 0
+fi
+
+if [ "$COMMAND_NAME" == "list" ]; then
+
+	# print file #
+	echo packages:
+	awk '{print "\t" $0}' $EAT_PREFIX/etc/eat/pkg.list
+	
+	# exit #
+	exit 0
+fi
+
+if [ "$COMMAND_NAME" == "inst" ]; then
+
+	# check if we have root privelidges #
+	if [ $EUID -ne 0 ]; then
+		echo $0: this command must be run as root.
+		exit 1
+	fi
+	
+	# create temporary directory #
+	mkdir -p "$EAT_PREFIX/tmp/eat-pkg-man"
+
+	# try to unpack the archive #
+	echo $0: unpacking archive \'$PACKAGE_NAME\'...
+	tar -xf "$PACKAGE_NAME" -C "$EAT_PREFIX/tmp/eat-pkg-man/"
+	
+	# could not extract archive #
+	if [ $? -ne 0 ]; then
+		echo $0: failed to unpack archive \'$PACKAGE_NAME\'.
+		rm -rf "$EAT_PREFIX/tmp/eat-pkg-man/"
+		exit 1
+	fi
+	
+	# load config file data #
+	source $EAT_PREFIX/tmp/eat-pkg-man/*/package.conf
+	
+	# copy files #
+	echo $0: installing files...
+	
+	BACKUP_IFS="$IFS"
+	IFS=":"
+	
+	for f in "$files"; do
+		cp -v $EAT_PREFIX/tmp/eat-pkg-man/*/$f "$EAT_PREFIX/$f"
+	done
+	
+	# reset IFS
+	IFS="$BACKUP_IFS"
+	
+	# copy package.conf
+	echo $0: setting up package \'$name\'...
+	
+	cp $EAT_PREFIX/tmp/eat-pkg-man/*/package.conf "$EAT_PREFIX/etc/eat/pkgs/$name"
+
+	# remove temporary directory #
+	rm -rf "$EAT_PREFIX/tmp/eat-pkg-man/"
+
+	# add package name to end of list #
+	USELESS=$(echo $name | tee -a "$EAT_PREFIX/etc/eat/pkg.list")
+
+	echo $0: finished setting up package \'$name\'.
+
+	# exit #
+	exit 0
+fi
+
+# just display help dialog otherwise #
+help_dialog
