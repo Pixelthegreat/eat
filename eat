@@ -59,7 +59,7 @@ if [ "$COMMAND_NAME" == "show" ]; then
 	fi
 	
 	# print config file #
-	echo package \'bob\':
+	echo package \'$PACKAGE_NAME\':
 	
 	source "$EAT_PREFIX/etc/eat/pkgs/$PACKAGE_NAME" > /dev/null
 	
